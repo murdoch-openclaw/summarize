@@ -3,6 +3,11 @@ import type {
   LinkPreviewProgressEvent,
   ScrapeWithFirecrawl,
 } from "../deps.js";
+import {
+  isBunCompressedResponseError,
+  withBunCompressionHeaders,
+  withBunIdentityEncoding,
+} from "../../bun.js";
 import type { CacheMode, FirecrawlDiagnostics } from "../types.js";
 import { isYouTubeUrl } from "../../url.js";
 import { appendNote } from "./utils.js";
@@ -12,18 +17,10 @@ const REQUEST_HEADERS: Record<string, string> = {
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
   Accept:
     "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-  "Accept-Encoding": "gzip, deflate",
   "Accept-Language": "en-US,en;q=0.9",
   "Cache-Control": "no-cache",
   Pragma: "no-cache",
 };
-
-/** Detect Bun's streaming decompression errors (ZlibError / ShortRead). */
-function isZlibError(error: unknown): boolean {
-  if (!(error instanceof Error)) return false;
-  const msg = error.message;
-  return msg.includes("ZlibError") || msg.includes("ShortRead") || msg.includes("Decompression error");
-}
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 5000;
 
@@ -134,14 +131,14 @@ export async function fetchHtmlDocument(
   options: { timeoutMs?: number; onProgress?: ((event: LinkPreviewProgressEvent) => void) | null } = {},
 ): Promise<HtmlDocumentFetchResult> {
   try {
-    return await fetchHtmlOnce(fetchImpl, url, REQUEST_HEADERS, options);
+    return await fetchHtmlOnce(fetchImpl, url, withBunCompressionHeaders(REQUEST_HEADERS), options);
   } catch (error) {
     // Bun's fetch has known bugs where its streaming zlib decompression throws
     // ZlibError / ShortRead on certain chunked+compressed responses. Retry the
     // request asking the server to skip compression entirely.
     // https://github.com/oven-sh/bun/issues/23149
-    if (isZlibError(error)) {
-      const uncompressedHeaders = { ...REQUEST_HEADERS, "Accept-Encoding": "identity" };
+    if (isBunCompressedResponseError(error)) {
+      const uncompressedHeaders = withBunIdentityEncoding(REQUEST_HEADERS);
       return await fetchHtmlOnce(fetchImpl, url, uncompressedHeaders, options);
     }
     throw error;

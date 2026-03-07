@@ -11,6 +11,21 @@ const htmlResponse = (html: string, status = 200) =>
   });
 
 describe("link preview fetcher", () => {
+  it("does not request compressed HTML outside Bun", async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const headers = init?.headers as Record<string, string>;
+      expect(headers["Accept-Encoding"]).toBeUndefined();
+      return htmlResponse("<html>ok</html>");
+    });
+
+    const result = await fetchHtmlDocument(
+      fetchMock as unknown as typeof fetch,
+      "https://example.com",
+    );
+
+    expect(result.html).toContain("ok");
+  });
+
   it("throws when HTML response is non-2xx", async () => {
     const fetchMock = vi.fn(async () => htmlResponse("<html></html>", 403));
     await expect(
@@ -61,6 +76,40 @@ describe("link preview fetcher", () => {
       await assertion;
     } finally {
       vi.useRealTimers();
+    }
+  });
+
+  it("retries with identity encoding for Bun decompression errors", async () => {
+    const originalBun = Object.getOwnPropertyDescriptor(globalThis, "Bun");
+    Object.defineProperty(globalThis, "Bun", {
+      value: {},
+      configurable: true,
+    });
+
+    try {
+      const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+        const headers = init?.headers as Record<string, string>;
+        if (fetchMock.mock.calls.length === 1) {
+          expect(headers["Accept-Encoding"]).toBe("gzip, deflate");
+          throw new Error("ZlibError: ShortRead");
+        }
+        expect(headers["Accept-Encoding"]).toBe("identity");
+        return htmlResponse("<html>retry ok</html>");
+      });
+
+      const result = await fetchHtmlDocument(
+        fetchMock as unknown as typeof fetch,
+        "https://example.com",
+      );
+
+      expect(result.html).toContain("retry ok");
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    } finally {
+      if (originalBun) {
+        Object.defineProperty(globalThis, "Bun", originalBun);
+      } else {
+        Reflect.deleteProperty(globalThis, "Bun");
+      }
     }
   });
 

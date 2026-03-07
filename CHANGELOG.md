@@ -19,6 +19,7 @@
 - Media setup: fix the local whisper.cpp install hint to use the current Homebrew formula name `whisper-cpp` (#92, thanks @zerone0x).
 - CLI output: cap markdown render width on very wide terminals by default, with a `--width` override for manual control (#119, thanks @howardpen9).
 - Shell completions: add Fish shell completions for the current CLI flags and option values (#95, thanks @fbehrens).
+- Bun fetch: only opt into compressed HTML/YouTube responses when running under Bun, and retry link-preview fetches with `Accept-Encoding: identity` after Bun decompression failures (#105, thanks @maciej).
 
 ## 0.11.0 - 2026-02-14
 

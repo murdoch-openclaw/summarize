@@ -133,6 +133,7 @@ describe("YouTube transcript parsing", () => {
       expect(headers["X-Goog-Visitor-Id"]).toBe("VISITOR");
       expect(headers["X-Youtube-Page-CL"]).toBe("99");
       expect(headers["X-Youtube-Page-Label"]).toBe("label");
+      expect(headers["Accept-Encoding"]).toBeUndefined();
 
       return Response.json(
         {
@@ -201,6 +202,37 @@ describe("YouTube transcript parsing", () => {
         originalUrl: "https://www.youtube.com/watch?v=abcdefghijk",
       }),
     ).toBeNull();
+  });
+
+  it("adds compression headers for youtube transcript fetches only under Bun", async () => {
+    const originalBun = Object.getOwnPropertyDescriptor(globalThis, "Bun");
+    Object.defineProperty(globalThis, "Bun", {
+      value: {},
+      configurable: true,
+    });
+
+    try {
+      const fetchOk = async (_input: RequestInfo | URL, init?: RequestInit) => {
+        const headers = init?.headers as Record<string, string>;
+        expect(headers["Accept-Encoding"]).toBe("gzip, deflate");
+        return Response.json({ actions: [] }, { status: 200 });
+      };
+
+      await fetchTranscriptFromTranscriptEndpoint(fetchOk as unknown as typeof fetch, {
+        config: {
+          apiKey: "TEST_KEY",
+          context: { client: {} },
+          params: "P",
+        },
+        originalUrl: "https://www.youtube.com/watch?v=abcdefghijk",
+      });
+    } finally {
+      if (originalBun) {
+        Object.defineProperty(globalThis, "Bun", originalBun);
+      } else {
+        Reflect.deleteProperty(globalThis, "Bun");
+      }
+    }
   });
 
   it("extracts youtubei bootstrap fields when present and returns null for invalid context", () => {

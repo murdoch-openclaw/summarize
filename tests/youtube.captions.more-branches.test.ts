@@ -150,4 +150,66 @@ describe("YouTube captionTracks extra branches", () => {
 
     expect(transcript?.text).toBe("Hello & world\nagain");
   });
+
+  it("adds compression headers for player fetches only under Bun", async () => {
+    const originalBun = Object.getOwnPropertyDescriptor(globalThis, "Bun");
+    Object.defineProperty(globalThis, "Bun", {
+      value: {},
+      configurable: true,
+    });
+
+    try {
+      const html =
+        "<!doctype html><html><head><title>Sample</title>" +
+        '<script>ytcfg.set({"INNERTUBE_API_KEY":"TEST_KEY","INNERTUBE_CONTEXT":{"client":{"clientName":"WEB","clientVersion":"1.0"}}});</script>' +
+        "</head><body></body></html>";
+
+      const fetchMock = vi.fn<[RequestInfo | URL, RequestInit?], Promise<Response>>(
+        (input, init) => {
+          const url = typeof input === "string" ? input : input.url;
+          if (url.includes("youtubei/v1/player")) {
+            const headers = init?.headers as Record<string, string>;
+            expect(headers["Accept-Encoding"]).toBe("gzip, deflate");
+            return Promise.resolve(
+              jsonResponse({
+                captions: {
+                  playerCaptionsTracklistRenderer: {
+                    captionTracks: [{ baseUrl: "https://example.com/captions", languageCode: "en" }],
+                  },
+                },
+              }),
+            );
+          }
+
+          if (url.startsWith("https://example.com/captions") && url.includes("fmt=json3")) {
+            return Promise.resolve(
+              new Response(JSON.stringify({ events: [{ segs: [{ utf8: "Hello" }] }] }), {
+                status: 200,
+                headers: { "Content-Type": "application/json" },
+              }),
+            );
+          }
+
+          throw new Error(`Unexpected fetch call: ${url}`);
+        },
+      );
+
+      const transcript = await fetchTranscriptFromCaptionTracks(
+        fetchMock as unknown as typeof fetch,
+        {
+          html,
+          originalUrl: "https://www.youtube.com/watch?v=abcdefghijk",
+          videoId: "abcdefghijk",
+        },
+      );
+
+      expect(transcript?.text).toBe("Hello");
+    } finally {
+      if (originalBun) {
+        Object.defineProperty(globalThis, "Bun", originalBun);
+      } else {
+        Reflect.deleteProperty(globalThis, "Bun");
+      }
+    }
+  });
 });

@@ -1,4 +1,5 @@
 import type { TranscriptSegment } from "../../../link-preview/types.js";
+import { withBunCompressionHeaders } from "../../../bun.js";
 import { fetchWithTimeout } from "../../../link-preview/fetch-with-timeout.js";
 import { parseTimestampToMs } from "../../timestamps.js";
 import { extractYoutubeBootstrapConfig, isRecord } from "../../utils.js";
@@ -8,7 +9,6 @@ const REQUEST_HEADERS: Record<string, string> = {
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
   Accept:
     "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-  "Accept-Encoding": "gzip, deflate",
   "Accept-Language": "en-US,en;q=0.9",
   "Cache-Control": "no-cache",
   Pragma: "no-cache",
@@ -140,7 +140,7 @@ export const fetchTranscriptFromTranscriptEndpoint = async (
     const userAgent =
       REQUEST_HEADERS["User-Agent"] ??
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36";
-    const headers: Record<string, string> = {
+    const headers: Record<string, string> = withBunCompressionHeaders({
       "Content-Type": "application/json",
       "User-Agent": userAgent,
       Accept: "application/json",
@@ -148,7 +148,7 @@ export const fetchTranscriptFromTranscriptEndpoint = async (
       Referer: originalUrl,
       "X-Goog-AuthUser": "0",
       "X-Youtube-Bootstrap-Logged-In": "false",
-    };
+    });
 
     if (config.clientName) {
       headers["X-Youtube-Client-Name"] = config.clientName;

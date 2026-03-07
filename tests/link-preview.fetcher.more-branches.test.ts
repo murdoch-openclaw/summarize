@@ -85,6 +85,17 @@ describe("link preview fetcher - more branches", () => {
     ).rejects.toThrow(/timed out/);
   });
 
+  it("does not retry decompression errors outside Bun", async () => {
+    const fetchMock = vi.fn(async () => {
+      throw new Error("ZlibError: ShortRead");
+    });
+
+    await expect(
+      fetchHtmlDocument(fetchMock as unknown as typeof fetch, "https://example.com"),
+    ).rejects.toThrow("ZlibError: ShortRead");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("covers Firecrawl skip/no-config/no-payload/success/error branches", async () => {
     const progress: Array<{ kind: string; ok?: boolean }> = [];
     const onProgress = (e: unknown) => progress.push(e as { kind: string; ok?: boolean });
