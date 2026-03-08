@@ -61,6 +61,7 @@ import { createSlidesTextController } from "./slides-text-controller";
 import { resolveSlidesRenderLayout } from "./slides-view-policy";
 import { createSlidesViewRuntime } from "./slides-view-runtime";
 import { createStreamController } from "./stream-controller";
+import { registerSidepanelTestHooks } from "./test-hooks";
 import { parseTimestampHref } from "./timestamp-links";
 import type { ChatMessage, PanelPhase, PanelState, RunStart, UiState } from "./types";
 import { createTypographyController } from "./typography-controller";
@@ -1212,84 +1213,52 @@ function applySlidesPayload(data: SseSlidesData) {
   slidesViewRuntime.applySlidesPayload(data, setSlidesTranscriptTimedText);
 }
 
-const slidesTestHooks = (
-  globalThis as {
-    __summarizeTestHooks?: {
-      applySlidesPayload?: (payload: SseSlidesData) => void;
-      getRunId?: () => string | null;
-      getSummaryMarkdown?: () => string;
-      getSlideDescriptions?: () => Array<[number, string]>;
-      getPhase?: () => PanelPhase;
-      getModel?: () => string | null;
-      getSlidesTimeline?: () => Array<{ index: number; timestamp: number | null }>;
-      getTranscriptTimedText?: () => string | null;
-      getSlidesSummaryMarkdown?: () => string;
-      getSlidesSummaryComplete?: () => boolean;
-      getSlidesSummaryModel?: () => string | null;
-      getChatEnabled?: () => boolean;
-      getSettingsHydrated?: () => boolean;
-      setTranscriptTimedText?: (value: string | null) => void;
-      setSummarizeMode?: (payload: { mode: "page" | "video"; slides: boolean }) => Promise<void>;
-      getSummarizeMode?: () => { mode: "page" | "video"; slides: boolean; mediaAvailable: boolean };
-      getSlidesState?: () => { slidesCount: number; layout: SlidesLayout; hasSlides: boolean };
-      renderSlidesNow?: () => void;
-      applyUiState?: (state: UiState) => void;
-      applyBgMessage?: (message: BgToPanel) => void;
-      applySummarySnapshot?: (payload: { run: RunStart; markdown: string }) => void;
-      applySummaryMarkdown?: (markdown: string) => void;
-      forceRenderSlides?: () => void;
-      showInlineError?: (message: string) => void;
-      isInlineErrorVisible?: () => boolean;
-      getInlineErrorMessage?: () => string;
-    };
-  }
-).__summarizeTestHooks;
-if (slidesTestHooks) {
-  slidesTestHooks.applySlidesPayload = applySlidesPayload;
-  slidesTestHooks.getRunId = () => panelState.runId;
-  slidesTestHooks.getSummaryMarkdown = () => panelState.summaryMarkdown ?? "";
-  slidesTestHooks.getSlideDescriptions = () => slidesTextController.getDescriptionEntries();
-  slidesTestHooks.getPhase = () => panelState.phase;
-  slidesTestHooks.getModel = () => panelState.lastMeta.model ?? null;
-  slidesTestHooks.getSlidesTimeline = () =>
+registerSidepanelTestHooks({
+  applySlidesPayload,
+  getRunId: () => panelState.runId,
+  getSummaryMarkdown: () => panelState.summaryMarkdown ?? "",
+  getSlideDescriptions: () => slidesTextController.getDescriptionEntries(),
+  getPhase: () => panelState.phase,
+  getModel: () => panelState.lastMeta.model ?? null,
+  getSlidesTimeline: () =>
     panelState.slides?.slides.map((slide) => ({
       index: slide.index,
       timestamp: Number.isFinite(slide.timestamp) ? slide.timestamp : null,
-    })) ?? [];
-  slidesTestHooks.getTranscriptTimedText = () => slidesTextController.getTranscriptTimedText();
-  slidesTestHooks.getSlidesSummaryMarkdown = () => slidesSummaryMarkdown;
-  slidesTestHooks.getSlidesSummaryComplete = () => slidesSummaryComplete;
-  slidesTestHooks.getSlidesSummaryModel = () => slidesSummaryModel;
-  slidesTestHooks.getChatEnabled = () => chatEnabledValue;
-  slidesTestHooks.getSettingsHydrated = () => settingsHydrated;
-  slidesTestHooks.setTranscriptTimedText = (value) => {
+    })) ?? [],
+  getTranscriptTimedText: () => slidesTextController.getTranscriptTimedText(),
+  getSlidesSummaryMarkdown: () => slidesSummaryMarkdown,
+  getSlidesSummaryComplete: () => slidesSummaryComplete,
+  getSlidesSummaryModel: () => slidesSummaryModel,
+  getChatEnabled: () => chatEnabledValue,
+  getSettingsHydrated: () => settingsHydrated,
+  setTranscriptTimedText: (value) => {
     setSlidesTranscriptTimedText(value);
     updateSlidesTextState();
-  };
-  slidesTestHooks.setSummarizeMode = async (payload) => {
+  },
+  setSummarizeMode: async (payload) => {
     await handleSummarizeControlChange(payload);
-  };
-  slidesTestHooks.getSummarizeMode = () => ({
+  },
+  getSummarizeMode: () => ({
     mode: inputModeOverride ?? inputMode,
     slides: slidesEnabledValue,
     mediaAvailable,
-  });
-  slidesTestHooks.getSlidesState = () => ({
+  }),
+  getSlidesState: () => ({
     slidesCount: panelState.slides?.slides.length ?? 0,
     layout: slidesLayoutValue,
     hasSlides: Boolean(panelState.slides),
-  });
-  slidesTestHooks.renderSlidesNow = () => {
+  }),
+  renderSlidesNow: () => {
     queueSlidesRender();
-  };
-  slidesTestHooks.applyUiState = (state) => {
+  },
+  applyUiState: (state) => {
     panelState.ui = state;
     updateControls(state);
-  };
-  slidesTestHooks.applyBgMessage = (message) => {
+  },
+  applyBgMessage: (message) => {
     handleBgMessage(message);
-  };
-  slidesTestHooks.applySummarySnapshot = (payload) => {
+  },
+  applySummarySnapshot: (payload) => {
     resetSummaryView({ preserveChat: false, clearRunId: false, stopSlides: false });
     panelState.runId = payload.run.id;
     panelState.slidesRunId = slidesParallelValue ? null : payload.run.id;
@@ -1299,23 +1268,23 @@ if (slidesTestHooks) {
     headerController.setBaseSubtitle("");
     renderMarkdown(payload.markdown);
     setPhase("idle");
-  };
-  slidesTestHooks.applySummaryMarkdown = (markdown) => {
+  },
+  applySummaryMarkdown: (markdown) => {
     renderMarkdown(markdown);
     setPhase("idle");
-  };
-  slidesTestHooks.forceRenderSlides = () => {
+  },
+  forceRenderSlides: () => {
     slidesEnabledValue = true;
     inputMode = "video";
     inputModeOverride = "video";
     return slidesRenderer.forceRender();
-  };
-  slidesTestHooks.showInlineError = (message) => {
+  },
+  showInlineError: (message) => {
     errorController.showInlineError(message);
-  };
-  slidesTestHooks.isInlineErrorVisible = () => !inlineErrorEl.classList.contains("hidden");
-  slidesTestHooks.getInlineErrorMessage = () => inlineErrorMessageEl.textContent ?? "";
-}
+  },
+  isInlineErrorVisible: () => !inlineErrorEl.classList.contains("hidden"),
+  getInlineErrorMessage: () => inlineErrorMessageEl.textContent ?? "",
+});
 
 async function requestSlidesContext() {
   await slidesViewRuntime.requestSlidesContext();
