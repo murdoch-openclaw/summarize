@@ -12,10 +12,9 @@ import { createCacheStateFromConfig, refreshCacheStoreIfMissing } from "../run/c
 import { resolveExecutableInPath } from "../run/env.js";
 import { formatModelLabelForDisplay } from "../run/finish-line.js";
 import { createMediaCacheFromConfig } from "../run/media-cache-state.js";
-import { resolveRunOverrides } from "../run/run-settings.js";
 import { encodeSseEvent, type SseEvent, type SseSlidesData } from "../shared/sse-events.js";
 import type { SlideExtractionResult, SlideSettings } from "../slides/index.js";
-import { resolveSlideImagePath, resolveSlideSettings } from "../slides/index.js";
+import { resolveSlideImagePath } from "../slides/index.js";
 import { resolvePackageVersion } from "../version.js";
 import { type DaemonRequestedMode, resolveAutoDaemonMode } from "./auto-mode.js";
 import { daemonConfigTokens, type DaemonConfig } from "./config.js";
@@ -30,7 +29,6 @@ import {
   json,
   readBearerToken,
   readCorsHeaders,
-  readJsonBody,
   text,
 } from "./server-http.js";
 import {
@@ -47,6 +45,7 @@ import {
   type SessionEvent,
 } from "./server-session.js";
 import { attachBufferedSseSession } from "./server-sse.js";
+import { parseSummarizeRequest, resolveHomeDir } from "./server-summarize-request.js";
 import {
   extractContentForUrl,
   streamSummaryForUrl,
@@ -54,14 +53,6 @@ import {
 } from "./summarize.js";
 
 export { corsHeaders, isTrustedOrigin } from "./server-http.js";
-
-function parseDiagnostics(raw: unknown): { includeContent: boolean } {
-  if (!raw || typeof raw !== "object") {
-    return { includeContent: false };
-  }
-  const obj = raw as Record<string, unknown>;
-  return { includeContent: Boolean(obj.includeContent) };
-}
 
 function createLineWriter(onLine: (line: string) => void) {
   let buffer = "";
@@ -83,34 +74,6 @@ function createLineWriter(onLine: (line: string) => void) {
       buffer = "";
       callback();
     },
-  });
-}
-
-function resolveHomeDir(env: Record<string, string | undefined>): string {
-  const home = env.HOME?.trim() || env.USERPROFILE?.trim();
-  if (!home) return process.cwd();
-  return home;
-}
-
-function resolveSlidesSettings({
-  env,
-  request,
-}: {
-  env: Record<string, string | undefined>;
-  request: Record<string, unknown>;
-}): SlideSettings | null {
-  const slidesValue = request.slides;
-  const tesseractAvailable = resolveToolPath("tesseract", env, "TESSERACT_PATH") !== null;
-  const slidesOcrValue = tesseractAvailable ? request.slidesOcr : false;
-  return resolveSlideSettings({
-    slides: slidesValue,
-    slidesOcr: slidesOcrValue,
-    slidesDir: request.slidesDir ?? ".summarize/slides",
-    slidesSceneThreshold: request.slidesSceneThreshold,
-    slidesSceneThresholdExplicit: typeof request.slidesSceneThreshold !== "undefined",
-    slidesMax: request.slidesMax,
-    slidesMinDuration: request.slidesMinDuration,
-    cwd: resolveHomeDir(env),
   });
 }
 
@@ -283,73 +246,37 @@ export async function runDaemonServer({
 
       if (req.method === "POST" && pathname === "/v1/summarize") {
         await refreshCacheStoreIfMissing({ cacheState, transcriptNamespace: "yt:auto" });
-        let body: unknown;
-        try {
-          body = await readJsonBody(req, 2_000_000);
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          json(res, 400, { ok: false, error: message }, cors);
-          return;
-        }
-        if (!body || typeof body !== "object") {
-          json(res, 400, { ok: false, error: "invalid json" }, cors);
-          return;
-        }
-        const obj = body as Record<string, unknown>;
-        const pageUrl = typeof obj.url === "string" ? obj.url.trim() : "";
-        const title = typeof obj.title === "string" ? obj.title.trim() : null;
-        const textContent = typeof obj.text === "string" ? obj.text : "";
-        const truncated = Boolean(obj.truncated);
-        const modelOverride = typeof obj.model === "string" ? obj.model.trim() : null;
-        const lengthRaw = typeof obj.length === "string" ? obj.length.trim() : "";
-        const languageRaw = typeof obj.language === "string" ? obj.language.trim() : "";
-        const promptRaw = typeof obj.prompt === "string" ? obj.prompt : "";
-        const promptOverride = promptRaw.trim() || null;
-        const noCache = Boolean(obj.noCache);
-        const extractOnly = Boolean(obj.extractOnly);
-        const modeRaw = typeof obj.mode === "string" ? obj.mode.trim().toLowerCase() : "";
-        const mode: DaemonRequestedMode =
-          modeRaw === "url" ? "url" : modeRaw === "page" ? "page" : "auto";
-        const maxCharactersCandidate =
-          typeof obj.maxExtractCharacters === "number" && Number.isFinite(obj.maxExtractCharacters)
-            ? obj.maxExtractCharacters
-            : typeof obj.maxCharacters === "number" && Number.isFinite(obj.maxCharacters)
-              ? obj.maxCharacters
-              : null;
-        const maxCharacters =
-          maxCharactersCandidate && maxCharactersCandidate > 0 ? maxCharactersCandidate : null;
-        const formatRaw = typeof obj.format === "string" ? obj.format.trim().toLowerCase() : "";
-        const format: "text" | "markdown" =
-          formatRaw === "markdown" || formatRaw === "md" ? "markdown" : "text";
-        const overrides = resolveRunOverrides({
-          firecrawl: obj.firecrawl,
-          markdownMode: obj.markdownMode,
-          preprocess: obj.preprocess,
-          youtube: obj.youtube,
-          videoMode: obj.videoMode,
-          timestamps: obj.timestamps,
-          forceSummary: obj.forceSummary,
-          timeout: obj.timeout,
-          retries: obj.retries,
-          maxOutputTokens: obj.maxOutputTokens,
-          autoCliFallback: obj.autoCliFallback,
-          autoCliOrder: obj.autoCliOrder,
-          magicCliAuto: obj.magicCliAuto,
-          magicCliOrder: obj.magicCliOrder,
+        const request = await parseSummarizeRequest({
+          req,
+          res,
+          cors,
+          env,
+          resolveToolPath,
         });
-        const slidesSettings = resolveSlidesSettings({ env, request: obj });
-        const diagnostics = parseDiagnostics(obj.diagnostics);
-        const includeContentLog = daemonLogger.enabled && diagnostics.includeContent;
-        const hasText = Boolean(textContent.trim());
-        if (!pageUrl || !/^https?:\/\//i.test(pageUrl)) {
-          json(res, 400, { ok: false, error: "missing url" }, cors);
+        if (!request) {
           return;
         }
+        const {
+          pageUrl,
+          title,
+          textContent,
+          truncated,
+          modelOverride,
+          lengthRaw,
+          languageRaw,
+          promptOverride,
+          noCache,
+          extractOnly,
+          mode,
+          maxCharacters,
+          format,
+          overrides,
+          slidesSettings,
+          diagnostics,
+          hasText,
+        } = request;
+        const includeContentLog = daemonLogger.enabled && diagnostics.includeContent;
         if (extractOnly) {
-          if (mode === "page") {
-            json(res, 400, { ok: false, error: "extractOnly requires mode=url" }, cors);
-            return;
-          }
           try {
             const requestCache: CacheState = noCache
               ? { ...cacheState, mode: "bypass" as const, store: null }
@@ -414,11 +341,6 @@ export async function runDaemonServer({
             const message = error instanceof Error ? error.message : String(error);
             json(res, 500, { ok: false, error: message }, cors);
           }
-          return;
-        }
-
-        if (mode === "page" && !hasText) {
-          json(res, 400, { ok: false, error: "missing text" }, cors);
           return;
         }
 
