@@ -2,7 +2,6 @@ import { buildUserScriptsGuidance, getUserScriptsStatus } from "../../automation
 import { readPresetOrCustomValue, resolvePresetOrCustom } from "../../lib/combo";
 import { defaultSettings, loadSettings, saveSettings } from "../../lib/settings";
 import { applyTheme, type ColorMode, type ColorScheme } from "../../lib/theme";
-import { mountCheckbox } from "../../ui/zag-checkbox";
 import { createDaemonStatusChecker } from "./daemon-status";
 import { getOptionsElements } from "./elements";
 import { createLogsViewer } from "./logs-viewer";
@@ -11,6 +10,7 @@ import { mountOptionsPickers } from "./pickers";
 import { createProcessesViewer } from "./processes-viewer";
 import { createSkillsController } from "./skills-controller";
 import { createOptionsTabs } from "./tab-controller";
+import { createBooleanToggleController } from "./toggles";
 
 declare const __SUMMARIZE_GIT_HASH__: string;
 declare const __SUMMARIZE_VERSION__: string;
@@ -337,65 +337,38 @@ const pickers = mountOptionsPickers(pickersRoot, {
   ...pickerHandlers,
 });
 
-const updateAutoToggle = () => {
-  autoToggle.update({
-    id: "options-auto",
-    label: "Auto-summarize when panel is open",
-    checked: autoValue,
-    onCheckedChange: handleAutoToggleChange,
-  });
-};
-const handleAutoToggleChange = (checked: boolean) => {
-  autoValue = checked;
-  updateAutoToggle();
-  scheduleAutoSave(0);
-};
-const autoToggle = mountCheckbox(autoToggleRoot, {
+const autoToggle = createBooleanToggleController({
+  root: autoToggleRoot,
   id: "options-auto",
   label: "Auto-summarize when panel is open",
-  checked: autoValue,
-  onCheckedChange: handleAutoToggleChange,
+  getValue: () => autoValue,
+  setValue: (checked) => {
+    autoValue = checked;
+  },
+  scheduleAutoSave,
 });
 
-const updateChatToggle = () => {
-  chatToggle.update({
-    id: "options-chat",
-    label: "Enable Chat mode in the side panel",
-    checked: chatEnabledValue,
-    onCheckedChange: handleChatToggleChange,
-  });
-};
-const handleChatToggleChange = (checked: boolean) => {
-  chatEnabledValue = checked;
-  updateChatToggle();
-  scheduleAutoSave(0);
-};
-const chatToggle = mountCheckbox(chatToggleRoot, {
+const chatToggle = createBooleanToggleController({
+  root: chatToggleRoot,
   id: "options-chat",
   label: "Enable Chat mode in the side panel",
-  checked: chatEnabledValue,
-  onCheckedChange: handleChatToggleChange,
+  getValue: () => chatEnabledValue,
+  setValue: (checked) => {
+    chatEnabledValue = checked;
+  },
+  scheduleAutoSave,
 });
 
-const updateAutomationToggle = () => {
-  automationToggle.update({
-    id: "options-automation",
-    label: "Enable website automation",
-    checked: automationEnabledValue,
-    onCheckedChange: handleAutomationToggleChange,
-  });
-};
-const handleAutomationToggleChange = (checked: boolean) => {
-  automationEnabledValue = checked;
-  updateAutomationToggle();
-  scheduleAutoSave(0);
-  void updateAutomationPermissionsUi();
-};
-const automationToggle = mountCheckbox(automationToggleRoot, {
+const automationToggle = createBooleanToggleController({
+  root: automationToggleRoot,
   id: "options-automation",
   label: "Enable website automation",
-  checked: automationEnabledValue,
-  onCheckedChange: handleAutomationToggleChange,
+  getValue: () => automationEnabledValue,
+  setValue: (checked) => {
+    automationEnabledValue = checked;
+  },
+  scheduleAutoSave,
+  afterChange: updateAutomationPermissionsUi,
 });
 
 async function updateAutomationPermissionsUi() {
@@ -444,124 +417,70 @@ automationPermissionsBtn.addEventListener("click", () => {
 });
 skillsController.bind();
 
-const updateHoverSummariesToggle = () => {
-  hoverSummariesToggle.update({
-    id: "options-hover-summaries",
-    label: "Hover summaries (experimental)",
-    checked: hoverSummariesValue,
-    onCheckedChange: handleHoverSummariesToggleChange,
-  });
-};
-const handleHoverSummariesToggleChange = (checked: boolean) => {
-  hoverSummariesValue = checked;
-  updateHoverSummariesToggle();
-  scheduleAutoSave(0);
-};
-const hoverSummariesToggle = mountCheckbox(hoverSummariesToggleRoot, {
+const hoverSummariesToggle = createBooleanToggleController({
+  root: hoverSummariesToggleRoot,
   id: "options-hover-summaries",
   label: "Hover summaries (experimental)",
-  checked: hoverSummariesValue,
-  onCheckedChange: handleHoverSummariesToggleChange,
+  getValue: () => hoverSummariesValue,
+  setValue: (checked) => {
+    hoverSummariesValue = checked;
+  },
+  scheduleAutoSave,
 });
 
-const updateSummaryTimestampsToggle = () => {
-  summaryTimestampsToggle.update({
-    id: "options-summary-timestamps",
-    label: "Summary timestamps (media only)",
-    checked: summaryTimestampsValue,
-    onCheckedChange: handleSummaryTimestampsToggleChange,
-  });
-};
-const handleSummaryTimestampsToggleChange = (checked: boolean) => {
-  summaryTimestampsValue = checked;
-  updateSummaryTimestampsToggle();
-  scheduleAutoSave(0);
-};
-const summaryTimestampsToggle = mountCheckbox(summaryTimestampsToggleRoot, {
+const summaryTimestampsToggle = createBooleanToggleController({
+  root: summaryTimestampsToggleRoot,
   id: "options-summary-timestamps",
   label: "Summary timestamps (media only)",
-  checked: summaryTimestampsValue,
-  onCheckedChange: handleSummaryTimestampsToggleChange,
+  getValue: () => summaryTimestampsValue,
+  setValue: (checked) => {
+    summaryTimestampsValue = checked;
+  },
+  scheduleAutoSave,
 });
 
-const updateSlidesParallelToggle = () => {
-  slidesParallelToggle.update({
-    id: "options-slides-parallel",
-    label: "Show summary first (parallel slides)",
-    checked: slidesParallelValue,
-    onCheckedChange: handleSlidesParallelToggleChange,
-  });
-};
-const handleSlidesParallelToggleChange = (checked: boolean) => {
-  slidesParallelValue = checked;
-  updateSlidesParallelToggle();
-  scheduleAutoSave(0);
-};
-const slidesParallelToggle = mountCheckbox(slidesParallelToggleRoot, {
+const slidesParallelToggle = createBooleanToggleController({
+  root: slidesParallelToggleRoot,
   id: "options-slides-parallel",
   label: "Show summary first (parallel slides)",
-  checked: slidesParallelValue,
-  onCheckedChange: handleSlidesParallelToggleChange,
+  getValue: () => slidesParallelValue,
+  setValue: (checked) => {
+    slidesParallelValue = checked;
+  },
+  scheduleAutoSave,
 });
 
-const updateSlidesOcrToggle = () => {
-  slidesOcrToggle.update({
-    id: "options-slides-ocr",
-    label: "Enable OCR slide text",
-    checked: slidesOcrEnabledValue,
-    onCheckedChange: handleSlidesOcrToggleChange,
-  });
-};
-const handleSlidesOcrToggleChange = (checked: boolean) => {
-  slidesOcrEnabledValue = checked;
-  updateSlidesOcrToggle();
-  scheduleAutoSave(0);
-};
-const slidesOcrToggle = mountCheckbox(slidesOcrToggleRoot, {
+const slidesOcrToggle = createBooleanToggleController({
+  root: slidesOcrToggleRoot,
   id: "options-slides-ocr",
   label: "Enable OCR slide text",
-  checked: slidesOcrEnabledValue,
-  onCheckedChange: handleSlidesOcrToggleChange,
+  getValue: () => slidesOcrEnabledValue,
+  setValue: (checked) => {
+    slidesOcrEnabledValue = checked;
+  },
+  scheduleAutoSave,
 });
 
-const updateExtendedLoggingToggle = () => {
-  extendedLoggingToggle.update({
-    id: "options-extended-logging",
-    label: "Extended logging (send full input/output to daemon logs)",
-    checked: extendedLoggingValue,
-    onCheckedChange: handleExtendedLoggingToggleChange,
-  });
-};
-const handleExtendedLoggingToggleChange = (checked: boolean) => {
-  extendedLoggingValue = checked;
-  updateExtendedLoggingToggle();
-  scheduleAutoSave(0);
-};
-const extendedLoggingToggle = mountCheckbox(extendedLoggingToggleRoot, {
+const extendedLoggingToggle = createBooleanToggleController({
+  root: extendedLoggingToggleRoot,
   id: "options-extended-logging",
   label: "Extended logging (send full input/output to daemon logs)",
-  checked: extendedLoggingValue,
-  onCheckedChange: handleExtendedLoggingToggleChange,
+  getValue: () => extendedLoggingValue,
+  setValue: (checked) => {
+    extendedLoggingValue = checked;
+  },
+  scheduleAutoSave,
 });
 
-const updateAutoCliFallbackToggle = () => {
-  autoCliFallbackToggle.update({
-    id: "options-auto-cli-fallback",
-    label: "Auto CLI fallback for Auto model",
-    checked: autoCliFallbackValue,
-    onCheckedChange: handleAutoCliFallbackToggleChange,
-  });
-};
-const handleAutoCliFallbackToggleChange = (checked: boolean) => {
-  autoCliFallbackValue = checked;
-  updateAutoCliFallbackToggle();
-  scheduleAutoSave(0);
-};
-const autoCliFallbackToggle = mountCheckbox(autoCliFallbackToggleRoot, {
+const autoCliFallbackToggle = createBooleanToggleController({
+  root: autoCliFallbackToggleRoot,
   id: "options-auto-cli-fallback",
   label: "Auto CLI fallback for Auto model",
-  checked: autoCliFallbackValue,
-  onCheckedChange: handleAutoCliFallbackToggleChange,
+  getValue: () => autoCliFallbackValue,
+  setValue: (checked) => {
+    autoCliFallbackValue = checked;
+  },
+  scheduleAutoSave,
 });
 
 async function load() {
@@ -587,15 +506,15 @@ async function load() {
   slidesOcrEnabledValue = s.slidesOcrEnabled;
   extendedLoggingValue = s.extendedLogging;
   autoCliFallbackValue = s.autoCliFallback;
-  updateAutoToggle();
-  updateChatToggle();
-  updateAutomationToggle();
-  updateHoverSummariesToggle();
-  updateSummaryTimestampsToggle();
-  updateSlidesParallelToggle();
-  updateSlidesOcrToggle();
-  updateExtendedLoggingToggle();
-  updateAutoCliFallbackToggle();
+  autoToggle.render();
+  chatToggle.render();
+  automationToggle.render();
+  hoverSummariesToggle.render();
+  summaryTimestampsToggle.render();
+  slidesParallelToggle.render();
+  slidesOcrToggle.render();
+  extendedLoggingToggle.render();
+  autoCliFallbackToggle.render();
   autoCliOrderEl.value = s.autoCliOrder;
   maxCharsEl.value = String(s.maxChars);
   requestModeEl.value = s.requestMode;
