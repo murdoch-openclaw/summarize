@@ -54,7 +54,7 @@ const defaultUiState: UiState = {
     hoverSummaries: false,
     chatEnabled: true,
     automationEnabled: false,
-    slidesEnabled: false,
+    slidesEnabled: true,
     slidesParallel: true,
     slidesOcrEnabled: false,
     slidesLayout: "strip",

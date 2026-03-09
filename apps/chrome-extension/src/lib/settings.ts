@@ -223,7 +223,7 @@ export const defaultSettings: Settings = {
   hoverSummaries: false,
   chatEnabled: true,
   automationEnabled: false,
-  slidesEnabled: false,
+  slidesEnabled: true,
   slidesParallel: true,
   slidesOcrEnabled: false,
   slidesLayout: "gallery",
