@@ -1,47 +1,105 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-function replaceOnce(input, pattern, replacer) {
-  const next = input.replace(pattern, replacer);
-  if (next === input) {
-    throw new Error(`failed to update formula using pattern: ${pattern}`);
+export const LINUX_HOMEBREW_MESSAGE =
+  "summarize Homebrew formula is macOS-only; use npm install -g @steipete/summarize on Linux";
+
+function skipDoBlock(lines, start) {
+  let depth = 0;
+  for (let index = start; index < lines.length; index += 1) {
+    const trimmed = lines[index].trim();
+    if (trimmed.endsWith(" do")) {
+      depth += 1;
+      continue;
+    }
+    if (trimmed === "end") {
+      depth -= 1;
+      if (depth === 0) {
+        return index + 1;
+      }
+    }
   }
+  throw new Error(`failed to find matching end for block starting at line ${start + 1}`);
+}
+
+function stripExistingPlatformConfig(data) {
+  const lines = data.split("\n");
+  const next = [];
+
+  for (let index = 0; index < lines.length; ) {
+    const line = lines[index];
+    if (/^  on_(macos|linux|arm|intel) do$/.test(line)) {
+      index = skipDoBlock(lines, index);
+      continue;
+    }
+    if (
+      /^  url "[^"\n]+"$/.test(line) ||
+      /^  sha256 "[^"\n]+"$/.test(line) ||
+      /^  depends_on arch: :arm64$/.test(line)
+    ) {
+      index += 1;
+      continue;
+    }
+    next.push(line);
+    index += 1;
+  }
+
   return next;
 }
 
+function findPlatformInsertIndex(lines) {
+  let insertIndex = 1;
+  for (let index = 1; index < lines.length; index += 1) {
+    if (/^  (desc|homepage|version|license) /.test(lines[index])) {
+      insertIndex = index + 1;
+      continue;
+    }
+    if (lines[index].trim() === "") {
+      continue;
+    }
+    break;
+  }
+  return insertIndex;
+}
+
+function buildPlatformBlock({ urlArm, shaArm, urlX64, shaX64 }) {
+  return [
+    "  on_macos do",
+    "    on_arm do",
+    `      url "${urlArm}"`,
+    `      sha256 "${shaArm}"`,
+    "    end",
+    "",
+    "    on_intel do",
+    `      url "${urlX64}"`,
+    `      sha256 "${shaX64}"`,
+    "    end",
+    "  end",
+    "",
+    "  on_linux do",
+    `    odie "${LINUX_HOMEBREW_MESSAGE}"`,
+    "  end",
+  ];
+}
+
 export function updateFormulaForMacArtifacts(data, { urlArm, shaArm, urlX64, shaX64 }) {
-  if (data.includes("on_arm do") && data.includes("on_intel do")) {
-    let next = data;
-    next = replaceOnce(next, /(on_arm do\s*\n\s*url ")(.*?)(")/s, `$1${urlArm}$3`);
-    next = replaceOnce(next, /(on_arm do.*?\n\s*sha256 ")(.*?)(")/s, `$1${shaArm}$3`);
-    next = replaceOnce(next, /(on_intel do\s*\n\s*url ")(.*?)(")/s, `$1${urlX64}$3`);
-    next = replaceOnce(next, /(on_intel do.*?\n\s*sha256 ")(.*?)(")/s, `$1${shaX64}$3`);
-    return next;
-  }
-
-  if (data.includes("depends_on arch: :arm64")) {
-    const dualBlock = [
-      "  on_arm do",
-      `    url "${urlArm}"`,
-      `    sha256 "${shaArm}"`,
-      "  end",
-      "",
-      "  on_intel do",
-      `    url "${urlX64}"`,
-      `    sha256 "${shaX64}"`,
-      "  end",
-    ].join("\n");
-
-    let next = data;
-    next = replaceOnce(next, /  url "[^"\n]+"\n  sha256 "[^"\n]+"/, dualBlock);
-    next = replaceOnce(next, /^  depends_on arch: :arm64\s*\n?/m, "");
-    return next;
-  }
-
-  let next = data;
-  next = replaceOnce(next, /^  url ".*"$/m, `  url "${urlArm}"`);
-  next = replaceOnce(next, /^  sha256 ".*"$/m, `  sha256 "${shaArm}"`);
-  return next;
+  const lines = stripExistingPlatformConfig(data);
+  const insertIndex = findPlatformInsertIndex(lines);
+  const output = [
+    ...lines.slice(0, insertIndex),
+    "",
+    ...buildPlatformBlock({ urlArm, shaArm, urlX64, shaX64 }),
+    "",
+    ...lines.slice(insertIndex).filter((line, index, array) => {
+      if (line.trim() !== "") return true;
+      const previous = index > 0 ? array[index - 1] : "";
+      return previous.trim() !== "";
+    }),
+  ];
+  return `${output
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trimEnd()}\n`;
 }
 
 export function updateFormulaFile(path, args) {
