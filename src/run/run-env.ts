@@ -18,6 +18,8 @@ export type EnvState = {
   nvidiaBaseUrl: string;
   firecrawlApiKey: string | null;
   firecrawlConfigured: boolean;
+  exaApiKey: string | null;
+  exaConfigured: boolean;
   googleConfigured: boolean;
   anthropicConfigured: boolean;
   apifyToken: string | null;
@@ -120,6 +122,7 @@ export function resolveEnvState({
   const falApiKey = typeof envForRun.FAL_KEY === "string" ? envForRun.FAL_KEY : null;
   const firecrawlKey =
     typeof envForRun.FIRECRAWL_API_KEY === "string" ? envForRun.FIRECRAWL_API_KEY : null;
+  const exaKey = typeof envForRun.EXA_API_KEY === "string" ? envForRun.EXA_API_KEY : null;
   const anthropicKeyRaw =
     typeof envForRun.ANTHROPIC_API_KEY === "string" ? envForRun.ANTHROPIC_API_KEY : null;
   const googleKeyRaw =
@@ -133,6 +136,8 @@ export function resolveEnvState({
 
   const firecrawlApiKey = firecrawlKey && firecrawlKey.trim().length > 0 ? firecrawlKey : null;
   const firecrawlConfigured = firecrawlApiKey !== null;
+  const exaApiKey = exaKey && exaKey.trim().length > 0 ? exaKey : null;
+  const exaConfigured = exaApiKey !== null;
   const xaiApiKey = xaiKeyRaw?.trim() ?? null;
   const zaiApiKey = zaiKeyRaw?.trim() ?? null;
   const zaiBaseUrlEffective = (zaiBaseUrl?.trim() ?? "") || "https://api.z.ai/api/paas/v4";
@@ -181,6 +186,8 @@ export function resolveEnvState({
     nvidiaBaseUrl: nvidiaBaseUrlEffective,
     firecrawlApiKey,
     firecrawlConfigured,
+    exaApiKey,
+    exaConfigured,
     googleConfigured,
     anthropicConfigured,
     apifyToken,

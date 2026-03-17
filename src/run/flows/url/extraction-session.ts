@@ -7,6 +7,7 @@ import {
   type FetchLinkContentOptions,
   type LinkPreviewProgressEvent,
 } from "../../../content/index.js";
+import { createExaContentsScraper } from "../../../exa.js";
 import { createFirecrawlScraper } from "../../../firecrawl.js";
 import { resolveSlideSource } from "../../../slides/index.js";
 import { readTweetWithPreferredClient } from "../../bird.js";
@@ -46,6 +47,7 @@ export function createUrlExtractionSession({
   const cacheStore = cacheState.mode === "default" ? cacheState.store : null;
   const transcriptCache = cacheStore ? cacheStore.transcriptCache : null;
   const firecrawlApiKey = model.apiStatus.firecrawlApiKey;
+  const exaApiKey = model.apiStatus.exaApiKey;
   const scrapeWithFirecrawl =
     model.apiStatus.firecrawlConfigured && flags.firecrawlMode !== "off" && firecrawlApiKey
       ? createFirecrawlScraper({
@@ -53,6 +55,12 @@ export function createUrlExtractionSession({
           fetchImpl: io.fetch,
         })
       : null;
+  const scrapeWithExa = exaApiKey
+    ? createExaContentsScraper({
+        apiKey: exaApiKey,
+        fetchImpl: io.fetch,
+      })
+    : null;
 
   const readTweetWithBirdClient =
     hasXurlCli(io.env) || hasBirdCli(io.env)
@@ -73,6 +81,7 @@ export function createUrlExtractionSession({
       geminiApiKey: model.apiStatus.googleApiKey,
     },
     scrapeWithFirecrawl,
+    scrapeWithExa,
     convertHtmlToMarkdown: markdown.convertHtmlToMarkdown,
     readTweetWithBird: readTweetWithBirdClient,
     resolveTwitterCookies: async (_args) => {
@@ -87,7 +96,7 @@ export function createUrlExtractionSession({
     transcriptCache,
     mediaCache: ctx.mediaCache ?? null,
     onProgress,
-  });
+  } as Parameters<typeof createLinkPreviewClient>[0]);
 
   const buildFetchOptions = (): FetchLinkContentOptions => ({
     timeoutMs: flags.timeoutMs,
@@ -109,6 +118,7 @@ export function createUrlExtractionSession({
     { bypassExtractCache = false }: { bypassExtractCache?: boolean } = {},
   ): Promise<ExtractedLinkContent> => {
     const options = buildFetchOptions();
+    const bypassCache = bypassExtractCache || flags.summaryCacheBypass;
     const cacheKey =
       cacheStore && cacheState.mode === "default"
         ? buildExtractCacheKey({
@@ -126,7 +136,7 @@ export function createUrlExtractionSession({
             },
           })
         : null;
-    if (!bypassExtractCache && cacheKey && cacheStore) {
+    if (!bypassCache && cacheKey && cacheStore) {
       const cached = cacheStore.getJson<ExtractedLinkContent>("extract", cacheKey);
       if (cached) {
         writeVerbose(
@@ -153,7 +163,7 @@ export function createUrlExtractionSession({
         options,
         env: io.env,
       });
-      if (cacheKey && cacheStore) {
+      if (!bypassCache && cacheKey && cacheStore) {
         const extractTtlMs =
           extracted.transcriptSource === "unavailable" ? NEGATIVE_TTL_MS : cacheState.ttlMs;
         cacheStore.setJson("extract", cacheKey, extracted, extractTtlMs);

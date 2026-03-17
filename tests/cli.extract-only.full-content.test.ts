@@ -96,4 +96,59 @@ describe("cli --extract", () => {
 
     expect(stdoutText.length).toBeGreaterThan(0);
   });
+
+  it("prints full extracted content when Exa wins the fallback", async () => {
+    const body = "B".repeat(40_000);
+    const blockedHtml =
+      "<!doctype html><html><head><title>Blocked</title></head><body>Attention Required! | Cloudflare</body></html>";
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.url;
+      if (url === "https://example.com") {
+        return new Response(blockedHtml, {
+          status: 200,
+          headers: { "Content-Type": "text/html" },
+        });
+      }
+      if (url === "https://api.exa.ai/contents") {
+        expect(init?.method).toBe("POST");
+        return Response.json({
+          results: [
+            {
+              url: "https://example.com",
+              title: "Exa title",
+              text: body,
+            },
+          ],
+          statuses: [],
+        });
+      }
+      if (url === "https://api.openai.com/v1/chat/completions") {
+        throw new Error("Unexpected OpenAI call in --extract mode");
+      }
+      throw new Error(`Unexpected fetch call: ${url}`);
+    });
+
+    let stdoutText = "";
+    const stdout = new Writable({
+      write(chunk, _encoding, callback) {
+        stdoutText += chunk.toString();
+        callback();
+      },
+    });
+
+    await runCli(["--extract", "--format", "text", "--timeout", "2s", "https://example.com"], {
+      env: { EXA_API_KEY: "exa-test" },
+      fetch: fetchMock as unknown as typeof fetch,
+      stdout,
+      stderr: new Writable({
+        write(_chunk, _encoding, cb) {
+          cb();
+        },
+      }),
+    });
+
+    expect(stdoutText).toContain(body.slice(0, 200));
+    expect(stdoutText.length).toBeGreaterThanOrEqual(39_000);
+  });
 });

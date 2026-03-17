@@ -105,6 +105,8 @@ export type UrlFlowModel = {
     nvidiaBaseUrl: string;
     firecrawlConfigured: boolean;
     firecrawlApiKey: string | null;
+    exaConfigured: boolean;
+    exaApiKey: string | null;
     apifyToken: string | null;
     ytDlpPath: string | null;
     ytDlpCookiesFromBrowser: string | null;

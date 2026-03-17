@@ -1,6 +1,6 @@
 import { resolveTranscriptForLink } from "../../transcript/index.js";
 import type { FirecrawlScrapeResult, LinkPreviewDeps } from "../deps.js";
-import type { FirecrawlDiagnostics } from "../types.js";
+import type { FirecrawlDiagnostics, RemoteContentDiagnostics } from "../types.js";
 import { extractArticleContent, extractPlainText } from "./article.js";
 import { normalizeForPrompt } from "./cleaner.js";
 import {
@@ -47,6 +47,7 @@ export async function buildResultFromFirecrawl({
   mediaTranscriptMode,
   transcriptTimestamps,
   firecrawlDiagnostics,
+  remoteContentDiagnostics,
   markdownRequested,
   deps,
 }: {
@@ -58,6 +59,7 @@ export async function buildResultFromFirecrawl({
   mediaTranscriptMode: FetchLinkContentOptions["mediaTranscript"];
   transcriptTimestamps?: FetchLinkContentOptions["transcriptTimestamps"];
   firecrawlDiagnostics: FirecrawlDiagnostics;
+  remoteContentDiagnostics?: RemoteContentDiagnostics | null;
   markdownRequested: boolean;
   deps: LinkPreviewDeps;
 }): Promise<ExtractedLinkContent | null> {
@@ -135,6 +137,7 @@ export async function buildResultFromFirecrawl({
     diagnostics: {
       strategy: "firecrawl",
       firecrawl: firecrawlDiagnostics,
+      remoteContent: remoteContentDiagnostics ?? null,
       markdown: {
         requested: markdownRequested,
         used: true,

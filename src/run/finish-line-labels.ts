@@ -1,7 +1,7 @@
 import { formatCompactCount } from "../tty/format.js";
 
 export type ExtractDiagnosticsForFinishLine = {
-  strategy: "bird" | "xurl" | "firecrawl" | "html" | "nitter";
+  strategy: "bird" | "xurl" | "firecrawl" | "html" | "nitter" | "exa";
   firecrawl: { used: boolean };
   markdown: { used: boolean; provider: "firecrawl" | "llm" | null; notes?: string | null };
   transcript: { textProvided: boolean; provider: string | null };
@@ -51,6 +51,7 @@ export function buildExtractFinishLabel(args: {
   if (strategy === "firecrawl" || args.extracted.diagnostics.firecrawl?.used) {
     return `${base} via firecrawl`;
   }
+  if (strategy === "exa") return `${base} via exa`;
   if (strategy === "xurl") return `${base} via xurl`;
   if (strategy === "bird") return `${base} via bird`;
   if (strategy === "nitter") return `${base} via nitter`;
@@ -65,6 +66,7 @@ export function buildSummaryFinishLabel(args: {
   if (strategy === "xurl") sources.push("xurl");
   if (strategy === "bird") sources.push("bird");
   if (strategy === "nitter") sources.push("nitter");
+  if (strategy === "exa") sources.push("exa");
   if (strategy === "firecrawl" || args.extracted.diagnostics.firecrawl?.used) {
     sources.push("firecrawl");
   }

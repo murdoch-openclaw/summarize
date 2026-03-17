@@ -166,6 +166,18 @@ describe("asset helpers", () => {
     ).resolves.toEqual({ kind: "website" });
   });
 
+  it("does not treat DOI-style numeric suffixes as asset extensions", async () => {
+    const fetchMock = fetch as typeof fetch;
+
+    await expect(
+      classifyUrl({
+        url: "https://esajournals.onlinelibrary.wiley.com/doi/10.1002/ecs2.3978",
+        fetchImpl: fetchMock,
+        timeoutMs: 10,
+      }),
+    ).resolves.toEqual({ kind: "website" });
+  });
+
   it("builds prompt messages with attachments", () => {
     const attachment = {
       kind: "image",

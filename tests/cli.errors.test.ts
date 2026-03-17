@@ -207,4 +207,72 @@ describe("cli error handling", () => {
       }),
     ).rejects.toThrow(/Unable to fetch tweet content from X/);
   });
+
+  it("includes Exa error notes when HTML fetch fails and Exa also fails", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input.url;
+      if (url === "https://example.com") {
+        return new Response("nope", { status: 403, headers: { "Content-Type": "text/html" } });
+      }
+      if (url === "https://api.exa.ai/contents") {
+        return Response.json(
+          {
+            results: [],
+            statuses: [
+              {
+                url: "https://example.com",
+                status: "error",
+                error: {
+                  tag: "CRAWL_TIMEOUT",
+                  message: "crawl exceeded timeout",
+                },
+              },
+            ],
+          },
+          { status: 200 },
+        );
+      }
+      throw new Error(`Unexpected fetch call: ${url}`);
+    });
+
+    await expect(
+      runCli(["--extract", "--timeout", "2s", "https://example.com"], {
+        env: { HOME: home, EXA_API_KEY: "exa-test" },
+        fetch: fetchMock as unknown as typeof fetch,
+        stdout: noopStream(),
+        stderr: noopStream(),
+      }),
+    ).rejects.toThrow(
+      "Failed to fetch HTML document; Exa notes: HTML fetch failed; falling back to Exa; Exa error: Exa contents status error for https://example.com: CRAWL_TIMEOUT (crawl exceeded timeout); HTML error: Failed to fetch HTML document (status 403)",
+    );
+  });
+
+  it("does not spend Exa on HTML 404 responses", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input.url;
+      if (url === "https://example.com/missing") {
+        return new Response("missing", {
+          status: 404,
+          headers: { "Content-Type": "text/html" },
+        });
+      }
+      if (url === "https://api.exa.ai/contents") {
+        throw new Error("Exa should not be called for HTML 404");
+      }
+      throw new Error(`Unexpected fetch call: ${url}`);
+    });
+
+    await expect(
+      runCli(["--extract", "--timeout", "2s", "https://example.com/missing"], {
+        env: { HOME: home, EXA_API_KEY: "exa-test" },
+        fetch: fetchMock as unknown as typeof fetch,
+        stdout: noopStream(),
+        stderr: noopStream(),
+      }),
+    ).rejects.toThrow("Failed to fetch HTML document (status 404)");
+    const calledUrls = fetchMock.mock.calls.map(([input]) =>
+      typeof input === "string" ? input : input.url,
+    );
+    expect(calledUrls).not.toContain("https://api.exa.ai/contents");
+  });
 });

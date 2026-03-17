@@ -133,10 +133,26 @@ export interface FirecrawlScrapeResult {
   metadata?: Record<string, unknown> | null;
 }
 
+export type RemoteContentProviderName = "exa";
+
+export interface RemoteContentPayload {
+  provider: RemoteContentProviderName;
+  url: string;
+  title: string | null;
+  content: string;
+  html?: string | null;
+  metadata?: Record<string, unknown> | null;
+}
+
 export type ScrapeWithFirecrawl = (
   url: string,
   options?: { cacheMode?: CacheMode; timeoutMs?: number },
 ) => Promise<FirecrawlScrapeResult | null>;
+
+export type ScrapeWithExaContents = (
+  url: string,
+  options?: { cacheMode?: CacheMode; timeoutMs?: number; maxCharacters?: number | null },
+) => Promise<RemoteContentPayload | null>;
 
 export type ConvertHtmlToMarkdown = (args: {
   url: string;
@@ -180,6 +196,7 @@ export interface LinkPreviewDeps {
   fetch: typeof fetch;
   env?: Record<string, string | undefined>;
   scrapeWithFirecrawl: ScrapeWithFirecrawl | null;
+  scrapeWithExa?: ScrapeWithExaContents | null;
   apifyApiToken: string | null;
   ytDlpPath: string | null;
   transcription?: TranscriptionConfig | null;

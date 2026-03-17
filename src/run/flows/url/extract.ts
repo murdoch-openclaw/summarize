@@ -38,17 +38,21 @@ export async function fetchLinkContentWithBirdTip({
 export function deriveExtractionUi(extracted: ExtractedLinkContent): UrlExtractionUi {
   const extractedContentBytes = Buffer.byteLength(extracted.content, "utf8");
   const contentSizeLabel = formatBytes(extractedContentBytes);
+  const strategy = String(extracted.diagnostics.strategy ?? "");
   const twitterStrategy =
-    extracted.diagnostics.strategy === "xurl" || extracted.diagnostics.strategy === "bird"
-      ? extracted.diagnostics.strategy
+    strategy === "xurl" || strategy === "bird"
+      ? strategy
       : null;
 
   const viaSources: string[] = [];
   if (twitterStrategy) {
     viaSources.push(twitterStrategy);
   }
-  if (extracted.diagnostics.strategy === "nitter") {
+  if (strategy === "nitter") {
     viaSources.push("Nitter");
+  }
+  if (strategy === "exa") {
+    viaSources.push("Exa");
   }
   if (extracted.diagnostics.firecrawl.used) {
     viaSources.push("Firecrawl");
@@ -56,9 +60,10 @@ export function deriveExtractionUi(extracted: ExtractedLinkContent): UrlExtracti
   const viaSourceLabel = viaSources.length > 0 ? `, ${viaSources.join("+")}` : "";
 
   const footerParts: string[] = [];
-  if (extracted.diagnostics.strategy === "html") footerParts.push("html");
+  if (strategy === "html") footerParts.push("html");
   if (twitterStrategy) footerParts.push(twitterStrategy);
-  if (extracted.diagnostics.strategy === "nitter") footerParts.push("nitter");
+  if (strategy === "nitter") footerParts.push("nitter");
+  if (strategy === "exa") footerParts.push("exa");
   if (extracted.diagnostics.firecrawl.used) footerParts.push("firecrawl");
   if (extracted.diagnostics.markdown.used) {
     if (extracted.diagnostics.markdown.provider === "llm") {
@@ -127,6 +132,17 @@ export function logExtractionDiagnostics({
     `extract firecrawl attempted=${extracted.diagnostics.firecrawl.attempted} used=${extracted.diagnostics.firecrawl.used} notes=${formatOptionalString(
       extracted.diagnostics.firecrawl.notes ?? null,
     )}`,
+    verboseColor,
+    env,
+  );
+  writeVerbose(
+    stderr,
+    verbose,
+    `extract remote provider=${formatOptionalString(
+      extracted.diagnostics.remoteContent?.provider ?? null,
+    )} attempted=${Boolean(extracted.diagnostics.remoteContent?.attempted)} used=${Boolean(
+      extracted.diagnostics.remoteContent?.used,
+    )} notes=${formatOptionalString(extracted.diagnostics.remoteContent?.notes ?? null)}`,
     verboseColor,
     env,
   );

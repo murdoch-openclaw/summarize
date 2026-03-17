@@ -2,11 +2,21 @@ import { resolveTranscriptForLink } from "../../transcript/index.js";
 import { resolveTranscriptionAvailability } from "../../transcript/providers/transcription-start.js";
 import { resolveTranscriptionConfig } from "../../transcript/transcription-config.js";
 import { isDirectMediaUrl, isYouTubeUrl } from "../../url.js";
-import type { FirecrawlScrapeResult, LinkPreviewDeps } from "../deps.js";
-import type { CacheMode, FirecrawlDiagnostics, TranscriptResolution } from "../types.js";
+import type { FirecrawlScrapeResult, LinkPreviewDeps, RemoteContentPayload } from "../deps.js";
+import type {
+  CacheMode,
+  FirecrawlDiagnostics,
+  RemoteContentDiagnostics,
+  TranscriptResolution,
+} from "../types.js";
 import { normalizeForPrompt } from "./cleaner.js";
 import { MIN_READABILITY_CONTENT_CHARACTERS } from "./constants.js";
-import { fetchHtmlDocument, fetchWithFirecrawl } from "./fetcher.js";
+import {
+  HtmlDocumentFetchError,
+  fetchHtmlDocument,
+  fetchWithFirecrawl,
+  fetchWithRemoteContent,
+} from "./fetcher.js";
 import { buildResultFromFirecrawl, shouldFallbackToFirecrawl } from "./firecrawl.js";
 import { buildResultFromHtmlDocument } from "./html.js";
 import { extractApplePodcastIds, extractSpotifyEpisodeId } from "./podcast-utils.js";
@@ -29,8 +39,16 @@ import {
   resolveTimeoutMs,
   selectBaseContent,
 } from "./utils.js";
+import { buildResultFromRemoteContent } from "./remote-content.js";
 
 const MAX_TWITTER_TEXT_FOR_TRANSCRIPT = 500;
+
+function shouldSkipRemoteFallbackForHtmlError(error: unknown): boolean {
+  return (
+    error instanceof HtmlDocumentFetchError &&
+    (error.statusCode === 404 || error.statusCode === 410)
+  );
+}
 
 const buildSkippedTwitterTranscript = (
   cacheMode: CacheMode,
@@ -75,6 +93,7 @@ export async function fetchLinkContent(
 
   const canUseFirecrawl =
     firecrawlMode !== "off" && deps.scrapeWithFirecrawl !== null && !isYouTubeUrl(url);
+  const canUseExa = deps.scrapeWithExa !== null && !isYouTubeUrl(url);
 
   const spotifyEpisodeId = extractSpotifyEpisodeId(url);
   if (spotifyEpisodeId) {
@@ -318,6 +337,16 @@ export async function fetchLinkContent(
     cacheStatus: cacheMode === "bypass" ? "bypassed" : "unknown",
     notes: null,
   };
+  const remoteContentDiagnostics: RemoteContentDiagnostics = {
+    provider: "exa",
+    attempted: false,
+    used: false,
+    cacheMode,
+    cacheStatus: cacheMode === "bypass" ? "bypassed" : "unknown",
+    notes: null,
+  };
+  let exaAttempted = false;
+  let exaPayload: RemoteContentPayload | null = null;
 
   const twitterStatus = isTwitterStatusUrl(url);
   const nitterUrls = twitterStatus ? toNitterUrls(url) : [];
@@ -360,6 +389,7 @@ export async function fetchLinkContent(
       mediaTranscriptMode,
       transcriptTimestamps,
       firecrawlDiagnostics,
+      remoteContentDiagnostics,
       markdownRequested,
       deps,
     });
@@ -371,6 +401,56 @@ export async function fetchLinkContent(
       firecrawlDiagnostics.notes,
       "Firecrawl returned empty content",
     );
+    return null;
+  };
+
+  const attemptExa = async (reason: string): Promise<ExtractedLinkContent | null> => {
+    if (!canUseExa || firecrawlMode === "always") {
+      return null;
+    }
+
+    if (!exaAttempted) {
+      const attempt = await fetchWithRemoteContent(
+        url,
+        {
+          provider: "exa",
+          scrape: deps.scrapeWithExa ?? null,
+        },
+        {
+          timeoutMs,
+          cacheMode,
+          reason,
+          maxCharacters,
+        },
+      );
+      exaAttempted = true;
+      exaPayload = attempt.payload;
+      remoteContentDiagnostics.provider = attempt.diagnostics.provider;
+      remoteContentDiagnostics.attempted = attempt.diagnostics.attempted;
+      remoteContentDiagnostics.used = attempt.diagnostics.used;
+      remoteContentDiagnostics.cacheMode = attempt.diagnostics.cacheMode;
+      remoteContentDiagnostics.cacheStatus = attempt.diagnostics.cacheStatus;
+      remoteContentDiagnostics.notes = attempt.diagnostics.notes ?? null;
+    }
+
+    if (!exaPayload) {
+      return null;
+    }
+
+    const exaResult = await buildResultFromRemoteContent({
+      url,
+      payload: exaPayload,
+      cacheMode,
+      maxCharacters,
+      firecrawlDiagnostics,
+      remoteContentDiagnostics,
+      markdownRequested,
+      _deps: deps,
+    });
+    if (exaResult) {
+      return exaResult;
+    }
+
     return null;
   };
 
@@ -558,8 +638,17 @@ export async function fetchLinkContent(
   }
 
   if (!htmlResult) {
-    if (!canUseFirecrawl) {
+    if (shouldSkipRemoteFallbackForHtmlError(htmlError)) {
+      throw htmlError;
+    }
+
+    if (!canUseFirecrawl && !canUseExa) {
       throw htmlError instanceof Error ? htmlError : new Error("Failed to fetch HTML document");
+    }
+
+    const exaResult = await attemptExa("HTML fetch failed; falling back to Exa");
+    if (exaResult) {
+      return exaResult;
     }
 
     const firecrawlResult = await attemptFirecrawl("HTML fetch failed; falling back to Firecrawl");
@@ -567,11 +656,14 @@ export async function fetchLinkContent(
       return firecrawlResult;
     }
 
+    const exaError = remoteContentDiagnostics.notes
+      ? `; Exa notes: ${remoteContentDiagnostics.notes}`
+      : "";
     const firecrawlError = firecrawlDiagnostics.notes
       ? `; Firecrawl notes: ${firecrawlDiagnostics.notes}`
       : "";
     throw new Error(
-      `Failed to fetch HTML document${firecrawlError}${
+      `Failed to fetch HTML document${exaError}${firecrawlError}${
         htmlError instanceof Error ? `; HTML error: ${htmlError.message}` : ""
       }`,
     );
@@ -587,6 +679,10 @@ export async function fetchLinkContent(
       ? normalizeForPrompt(readabilityCandidate.text)
       : "";
     if (readabilityText.length < MIN_READABILITY_CONTENT_CHARACTERS) {
+      const exaResult = await attemptExa("HTML content looked blocked/thin; falling back to Exa");
+      if (exaResult) {
+        return exaResult;
+      }
       const firecrawlResult = await attemptFirecrawl(
         "HTML content looked blocked/thin; falling back to Firecrawl",
       );
@@ -605,6 +701,7 @@ export async function fetchLinkContent(
     mediaTranscriptMode,
     transcriptTimestamps,
     firecrawlDiagnostics,
+    remoteContentDiagnostics,
     markdownRequested,
     markdownMode,
     timeoutMs,

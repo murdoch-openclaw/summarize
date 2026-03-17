@@ -38,6 +38,15 @@ export interface FirecrawlDiagnostics {
   notes?: string | null;
 }
 
+export interface RemoteContentDiagnostics {
+  provider: "exa" | null;
+  attempted: boolean;
+  used: boolean;
+  cacheMode: CacheMode;
+  cacheStatus: CacheStatus;
+  notes?: string | null;
+}
+
 export interface MarkdownDiagnostics {
   requested: boolean;
   used: boolean;
@@ -46,8 +55,9 @@ export interface MarkdownDiagnostics {
 }
 
 export interface ContentFetchDiagnostics {
-  strategy: "bird" | "xurl" | "firecrawl" | "html" | "nitter";
+  strategy: "bird" | "xurl" | "firecrawl" | "html" | "nitter" | "exa";
   firecrawl: FirecrawlDiagnostics;
+  remoteContent?: RemoteContentDiagnostics | null;
   markdown: MarkdownDiagnostics;
   transcript: TranscriptDiagnostics;
 }

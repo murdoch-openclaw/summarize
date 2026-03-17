@@ -10,6 +10,7 @@ import type {
   LinkPreviewDeps,
   LinkPreviewProgressEvent,
   ResolveTwitterCookies,
+  ScrapeWithExaContents,
   ScrapeWithFirecrawl,
 } from "./deps.js";
 
@@ -23,6 +24,7 @@ export interface LinkPreviewClientOptions {
   fetch?: typeof fetch;
   env?: Record<string, string | undefined>;
   scrapeWithFirecrawl?: ScrapeWithFirecrawl | null;
+  scrapeWithExa?: ScrapeWithExaContents | null;
   apifyApiToken?: string | null;
   ytDlpPath?: string | null;
   transcription?: Partial<TranscriptionConfig> | null;
@@ -45,6 +47,7 @@ export function createLinkPreviewClient(options: LinkPreviewClientOptions = {}):
     options.fetch ?? ((...args: Parameters<typeof fetch>) => globalThis.fetch(...args));
   const env = typeof options.env === "object" && options.env ? options.env : undefined;
   const scrape: ScrapeWithFirecrawl | null = options.scrapeWithFirecrawl ?? null;
+  const scrapeWithExa: ScrapeWithExaContents | null = options.scrapeWithExa ?? null;
   const apifyApiToken = typeof options.apifyApiToken === "string" ? options.apifyApiToken : null;
   const ytDlpPath = typeof options.ytDlpPath === "string" ? options.ytDlpPath : null;
   const falApiKey = typeof options.falApiKey === "string" ? options.falApiKey : null;
@@ -73,10 +76,11 @@ export function createLinkPreviewClient(options: LinkPreviewClientOptions = {}):
 
   return {
     fetchLinkContent: (url: string, contentOptions?: FetchLinkContentOptions) =>
-      fetchLinkContent(url, contentOptions, {
+        fetchLinkContent(url, contentOptions, {
         fetch: fetchImpl,
         env,
         scrapeWithFirecrawl: scrape,
+        scrapeWithExa,
         apifyApiToken,
         ytDlpPath,
         transcription,

@@ -7,9 +7,11 @@ import { isYouTubeUrl } from "../../url.js";
 import type {
   FirecrawlScrapeResult,
   LinkPreviewProgressEvent,
+  RemoteContentPayload,
   ScrapeWithFirecrawl,
+  ScrapeWithExaContents,
 } from "../deps.js";
-import type { CacheMode, FirecrawlDiagnostics } from "../types.js";
+import type { CacheMode, FirecrawlDiagnostics, RemoteContentDiagnostics } from "../types.js";
 import { appendNote } from "./utils.js";
 
 const REQUEST_HEADERS: Record<string, string> = {
@@ -24,6 +26,21 @@ const REQUEST_HEADERS: Record<string, string> = {
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 5000;
 
+export class HtmlDocumentFetchError extends Error {
+  statusCode: number | null;
+  finalUrl: string | null;
+
+  constructor(message: string, options?: { statusCode?: number | null; finalUrl?: string | null }) {
+    super(message);
+    this.name = "Error";
+    this.statusCode =
+      typeof options?.statusCode === "number" && Number.isFinite(options.statusCode)
+        ? Math.trunc(options.statusCode)
+        : null;
+    this.finalUrl = typeof options?.finalUrl === "string" ? options.finalUrl : null;
+  }
+}
+
 export interface FirecrawlFetchResult {
   payload: FirecrawlScrapeResult | null;
   diagnostics: FirecrawlDiagnostics;
@@ -32,6 +49,11 @@ export interface FirecrawlFetchResult {
 export interface HtmlDocumentFetchResult {
   html: string;
   finalUrl: string;
+}
+
+export interface RemoteContentFetchResult {
+  payload: RemoteContentPayload | null;
+  diagnostics: RemoteContentDiagnostics;
 }
 
 async function fetchHtmlOnce(
@@ -62,7 +84,10 @@ async function fetchHtmlOnce(
     });
 
     if (!response.ok) {
-      throw new Error(`Failed to fetch HTML document (status ${response.status})`);
+      throw new HtmlDocumentFetchError(`Failed to fetch HTML document (status ${response.status})`, {
+        statusCode: response.status,
+        finalUrl: response.url?.trim() || url,
+      });
     }
 
     const finalUrl = response.url?.trim() || url;
@@ -211,6 +236,57 @@ export async function fetchWithFirecrawl(
       `Firecrawl error: ${error instanceof Error ? error.message : "unknown error"}`,
     );
     onProgress?.({ kind: "firecrawl-done", url, ok: false, markdownBytes: null, htmlBytes: null });
+    return { payload: null, diagnostics };
+  }
+}
+
+export async function fetchWithRemoteContent(
+  url: string,
+  backend: {
+    provider: "exa";
+    scrape: ScrapeWithExaContents | null;
+  },
+  options: {
+    timeoutMs?: number;
+    cacheMode?: CacheMode;
+    reason?: string | null;
+    maxCharacters?: number | null;
+  } = {},
+): Promise<RemoteContentFetchResult> {
+  const cacheMode: CacheMode = options.cacheMode ?? "default";
+  const diagnostics: RemoteContentDiagnostics = {
+    provider: backend.provider,
+    attempted: false,
+    used: false,
+    cacheMode,
+    cacheStatus: cacheMode === "bypass" ? "bypassed" : "unknown",
+    notes: typeof options.reason === "string" ? options.reason : null,
+  };
+
+  if (!backend.scrape) {
+    diagnostics.notes = appendNote(diagnostics.notes, "Exa is not configured");
+    return { payload: null, diagnostics };
+  }
+
+  diagnostics.attempted = true;
+
+  try {
+    const payload = await backend.scrape(url, {
+      timeoutMs: options.timeoutMs,
+      cacheMode,
+      maxCharacters: options.maxCharacters,
+    });
+    if (!payload) {
+      diagnostics.notes = appendNote(diagnostics.notes, "Exa returned no content payload");
+      return { payload: null, diagnostics };
+    }
+
+    return { payload, diagnostics };
+  } catch (error) {
+    diagnostics.notes = appendNote(
+      diagnostics.notes,
+      `Exa error: ${error instanceof Error ? error.message : "unknown error"}`,
+    );
     return { payload: null, diagnostics };
   }
 }

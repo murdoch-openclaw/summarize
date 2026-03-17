@@ -23,7 +23,9 @@ export type {
   FirecrawlScrapeResult,
   LinkPreviewDeps,
   LinkPreviewProgressEvent,
+  RemoteContentPayload,
   ReadTweetWithBird,
+  ScrapeWithExaContents,
   ScrapeWithFirecrawl,
 } from "./link-preview/deps.js";
 export { ProgressKind } from "./link-preview/deps.js";

@@ -107,6 +107,9 @@ function isLikelyAssetPathname(pathname: string): boolean {
   if (ext === ".html" || ext === ".htm" || ext === ".php" || ext === ".asp" || ext === ".aspx") {
     return false;
   }
+  if (!/[a-z]/i.test(ext)) {
+    return false;
+  }
   return true;
 }
 

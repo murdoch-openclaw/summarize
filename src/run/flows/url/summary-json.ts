@@ -33,6 +33,7 @@ export function buildUrlJsonEnv(apiStatus: {
   openrouterApiKey: string | null;
   apifyToken: string | null;
   firecrawlConfigured: boolean;
+  exaConfigured?: boolean;
   googleConfigured: boolean;
   anthropicConfigured: boolean;
 }) {
@@ -42,6 +43,7 @@ export function buildUrlJsonEnv(apiStatus: {
     hasOpenRouterKey: Boolean(apiStatus.openrouterApiKey),
     hasApifyToken: Boolean(apiStatus.apifyToken),
     hasFirecrawlKey: apiStatus.firecrawlConfigured,
+    hasExaKey: Boolean(apiStatus.exaConfigured),
     hasGoogleKey: apiStatus.googleConfigured,
     hasAnthropicKey: apiStatus.anthropicConfigured,
   };
